@@ -2,6 +2,7 @@
 import { useState, useRef, useEffect } from "react"
 import { useChat } from "@ai-sdk/react"
 import { DefaultChatTransport } from "ai"
+import ReactMarkdown from "react-markdown"
 
 const TOOL_LABELS = {
   getAllEmployees:            "Reading all employees",
@@ -98,8 +99,20 @@ function StatsPanel({ stats }) {
   )
 }
 
+// ---- Fix 2: Empty state + proper rendering -----------------
 function ToolOutput({ toolName, data }) {
-  if (!data) return null
+  if (data === null || data === undefined) return null
+
+  // FIX: Empty array — show friendly message instead of blank
+  if (Array.isArray(data) && data.length === 0) {
+    return (
+      <div className="tool-result">
+        <div className="empty-result">
+          No employees found for this query.
+        </div>
+      </div>
+    )
+  }
 
   // Array of employees
   if (Array.isArray(data) && data[0]?.employeeId) {
@@ -112,27 +125,48 @@ function ToolOutput({ toolName, data }) {
       </div>
     )
   }
+
   // Single employee
   if (data?.employeeId && !data.recommendation) {
     return <div className="tool-result"><EmployeeCard emp={data} /></div>
   }
+
   // Recommendation
   if (data?.recommendation) {
     return <div className="tool-result"><RecommendationPanel rec={data} /></div>
   }
+
   // Stats
   if (data?.total !== undefined) {
     return <div className="tool-result"><StatsPanel stats={data} /></div>
   }
+
   return <pre className="raw">{JSON.stringify(data, null, 2)}</pre>
+}
+
+// ---- Fix 3: Loader shown during tool execution -------------
+// Shows animated dots whenever agent is working
+// (streaming OR tools running)
+function ThinkingLoader({ label }) {
+  return (
+    <div className="row assistant">
+      <div className="bubble assistant">
+        <div className="bubble-label">Assistant</div>
+        <div className="thinking">
+          <div className="typing"><span /><span /><span /></div>
+          {label && <span className="thinking-label">{label}</span>}
+        </div>
+      </div>
+    </div>
+  )
 }
 
 const SUGGESTIONS = [
   "Show all transfer requests",
   "Who has been approved?",
   "Who is still pending?",
-  "Recommendation for David Lee",
-  "Show employees from Sales",
+  "Recommendation for EMP-0006",
+  "Show employees from IT",
   "Give me a summary",
 ]
 
@@ -144,12 +178,14 @@ export default function AssistantPage() {
     transport: new DefaultChatTransport({ api: "/api/agent" }),
   })
 
-  const busy = status === "streaming"
+  // "streaming" = tokens coming in, "submitted" = waiting for first response
+  const busy       = status === "streaming" || status === "submitted"
+  const isWaiting  = status === "submitted"  // sent but nothing back yet
 
   useEffect(() => {
     if (scrollRef.current)
       scrollRef.current.scrollTop = scrollRef.current.scrollHeight
-  }, [messages])
+  }, [messages, busy])
 
   function send(text) {
     const msg = (text || input).trim()
@@ -157,6 +193,17 @@ export default function AssistantPage() {
     setInput("")
     sendMessage({ text: msg })
   }
+
+  // Check if the last assistant message has any tool currently running
+  const lastMessage  = messages[messages.length - 1]
+  const runningTool  = lastMessage?.role === "assistant"
+    ? lastMessage.parts?.find(p =>
+        p.type?.startsWith("tool-") && p.state !== "output-available"
+      )
+    : null
+  const runningLabel = runningTool
+    ? TOOL_LABELS[runningTool.type?.replace("tool-", "")] || "Working…"
+    : null
 
   return (
     <div className="page">
@@ -181,60 +228,56 @@ export default function AssistantPage() {
           </div>
         )}
 
-     {messages.map(message => (
-  <div key={message.id} className={`row ${message.role}`}>
-    <div className={`bubble ${message.role}`}>
-      <div className="bubble-label">
-        {message.role === "user" ? "You" : "Assistant"}
-      </div>
-
-      {message.parts?.map((part, i) => {
-
-        // Plain text
-        if (part.type === "text") {
-          return <div key={i} className="bubble-text">{part.text}</div>
-        }
-
-        // Tool part — your SDK uses "tool-{toolName}" as the type
-        // e.g. "tool-getAllEmployees", "tool-getTransferRecommendation"
-        if (part.type?.startsWith("tool-")) {
-
-          // Still running
-          if (part.state !== "output-available") {
-            const toolName = part.type.replace("tool-", "")
-            return (
-              <div key={i} className="tool-trace">
-                <span className="dot" />
-                {TOOL_LABELS[toolName] || toolName}…
+        {messages.map(message => (
+          <div key={message.id} className={`row ${message.role}`}>
+            <div className={`bubble ${message.role}`}>
+              <div className="bubble-label">
+                {message.role === "user" ? "You" : "Assistant"}
               </div>
-            )
-          }
 
-          // Finished — data is in part.output
-          const toolName = part.type.replace("tool-", "")
-          return (
-            <ToolOutput key={i} toolName={toolName} data={part.output} />
-          )
-        }
+              {message.parts?.map((part, i) => {
 
-        // step-start marker — ignore it
-        if (part.type === "step-start") return null
+                // FIX 1: Render markdown properly instead of raw **text**
+                if (part.type === "text") {
+                  if (!part.text?.trim()) return null
+                  return (
+                    <div key={i} className="bubble-text markdown-body">
+                      <ReactMarkdown>{part.text}</ReactMarkdown>
+                    </div>
+                  )
+                }
 
-        return null
-      })}
+                if (part.type?.startsWith("tool-")) {
+                  if (part.state !== "output-available") {
+                    const toolName = part.type.replace("tool-", "")
+                    return (
+                      <div key={i} className="tool-trace">
+                        <span className="dot" />
+                        {TOOL_LABELS[toolName] || toolName}…
+                      </div>
+                    )
+                  }
+                  const toolName = part.type.replace("tool-", "")
+                  return (
+                    <ToolOutput key={i} toolName={toolName} data={part.output} />
+                  )
+                }
 
-    </div>
-  </div>
-))}
-
-        {busy && (
-          <div className="row assistant">
-            <div className="bubble assistant">
-              <div className="bubble-label">Assistant</div>
-              <div className="typing"><span /><span /><span /></div>
+                if (part.type === "step-start") return null
+                return null
+              })}
             </div>
           </div>
+        ))}
+
+        {/* FIX 3: Show loader when waiting for first response */}
+        {isWaiting && <ThinkingLoader label="Thinking…" />}
+
+        {/* Show tool running label during streaming */}
+        {status === "streaming" && runningLabel && (
+          <ThinkingLoader label={runningLabel} />
         )}
+
       </div>
 
       <div className="input-bar">
@@ -249,7 +292,7 @@ export default function AssistantPage() {
           onClick={() => send()}
           disabled={busy || !input.trim()}
           className="send-btn"
-        >↑</button>
+        >{busy ? "…" : "↑"}</button>
       </div>
     </div>
   )

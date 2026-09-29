@@ -588,3 +588,65 @@ body {
   opacity: .4;
   cursor: not-allowed
 }
+
+/* Empty result message */
+.empty-result {
+  padding: 12px 14px;
+  color: var(--muted);
+  font-size: 13px;
+  font-style: italic;
+  background: var(--bg);
+  border-radius: 8px;
+  border: 1px dashed var(--border);
+  text-align: center;
+}
+
+/* Thinking loader with label */
+.thinking {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding: 10px 14px;
+}
+
+.thinking-label {
+  font-size: 12px;
+  color: var(--muted);
+}
+
+/* Markdown body styles */
+.markdown-body {
+  padding: 4px 14px 12px;
+  font-size: 14px;
+  line-height: 1.6;
+}
+
+.markdown-body p {
+  margin-bottom: 8px;
+}
+
+.markdown-body p:last-child {
+  margin-bottom: 0;
+}
+
+.markdown-body strong {
+  font-weight: 600;
+  color: var(--text);
+}
+
+.markdown-body ul, .markdown-body ol {
+  padding-left: 20px;
+  margin-bottom: 8px;
+}
+
+.markdown-body li {
+  margin-bottom: 4px;
+}
+
+.markdown-body code {
+  background: var(--bg);
+  padding: 1px 5px;
+  border-radius: 4px;
+  font-size: 12px;
+  font-family: monospace;
+}

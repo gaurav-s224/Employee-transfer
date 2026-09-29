@@ -62,7 +62,13 @@ CHAINING EXAMPLES:
   → getEmployeesByStatus(Active) + getTransferRecommendation for each one
 
 - "Give me a full report"
-  → getSummaryStats + getAllEmployees + getTransferRecommendation for pending ones`
+  → getSummaryStats + getAllEmployees + getTransferRecommendation for pending ones
+
+  FORMATTING:
+- When a tool returns employee data, just say "Here are the results." — the UI renders cards automatically
+- Only use markdown (bold, bullets) when giving a text-only analysis with NO tool data
+- If a tool returns an empty result, say "No employees found in [department/filter]" clearly
+- Never list employee details as text if a tool already returned the data as cards`
 
 export async function POST(req) {
   const body = await req.json()
