@@ -4,17 +4,19 @@ import { useChat } from "@ai-sdk/react"
 import { DefaultChatTransport } from "ai"
 import ReactMarkdown from "react-markdown"
 
+import { Sparkles, SendHorizontal } from "lucide-react"
+
 const TOOL_LABELS = {
-  getAllEmployees:            "Reading all employees",
-  getEmployeesByStatus:      "Filtering by approval status",
-  getEmployeesByDept:        "Filtering by department",
-  getEmployeeDetails:        "Looking up employee",
+  getAllEmployees: "Reading all employees",
+  getEmployeesByStatus: "Filtering by approval status",
+  getEmployeesByDept: "Filtering by department",
+  getEmployeeDetails: "Looking up employee",
   getTransferRecommendation: "Running recommendation",
-  getSummaryStats:           "Calculating stats",
+  getSummaryStats: "Calculating stats",
 }
 
 function StatusBadge({ status }) {
-  const cls   = status === "Active" ? "pending" : status === "Accept" ? "approved" : "onleave"
+  const cls = status === "Active" ? "pending" : status === "Accept" ? "approved" : "onleave"
   const label = status === "Active" ? "Pending" : status === "Accept" ? "Approved" : status
   return <span className={`badge ${cls}`}>{label}</span>
 }
@@ -56,10 +58,30 @@ function EmployeeCard({ emp, isSelected, onRecommend }) {
       <div className="emp-meta">
         <span>✉ {emp.email}</span>
         <span>💰 ${Number(emp.salary).toLocaleString()}</span>
-        <span>📅 {new Date(emp.hireDate).toLocaleDateString("en-US",{month:"short",year:"numeric"})}</span>
+        <span>📅 {new Date(emp.hireDate).toLocaleDateString("en-US", { month: "short", year: "numeric" })}</span>
       </div>
     </div>
   )
+}
+
+// Add this function above InlineRecommendation
+function highlightNumbers(text) {
+  if (!text) return text
+  // Matches: $72,000 | 44 months | 90/100 | 12+ | 65k-110k | 85,000.00
+  const parts = text.split(/(\$[\d,]+(?:\.\d+)?(?:k)?|[\d,]+(?:\.\d+)?(?:k)?(?:\+)?(?:\s*(?:months|years|%))?|\d+\/\d+|\d+k-\d+k)/gi)
+  return parts.map((part, i) => {
+    const isNumber = /(\$[\d,]+|\d+[\w\/\-+%k]|\d+\s*(months|years|%)|\d+\/\d+|\d+k-\d+k)/i.test(part)
+    return isNumber
+      ? <strong key={i} style={{
+        fontWeight: 700,
+        color: "var(--teal-700)",
+        background: "var(--teal-50)",
+        padding: "0 3px",
+        borderRadius: "3px",
+        fontSize: "12px",
+      }}>{part}</strong>
+      : part
+  })
 }
 
 // ---- Recommendation panel that sits beside all cards ----
@@ -68,7 +90,7 @@ function InlineRecommendation({ rec, loading }) {
     return (
       <div className="side-rec-panel loading">
         <div className="side-rec-loading">
-          <div className="typing"><span/><span/><span/></div>
+          <div className="typing"><span /><span /><span /></div>
           <span>Analysing transfer request…</span>
         </div>
       </div>
@@ -79,37 +101,42 @@ function InlineRecommendation({ rec, loading }) {
 
   if (rec.error) {
     return (
-      <div className="side-rec-panel bad">
-        <div className="side-rec-head" style={{background:"var(--red-lt)"}}>
-          <span>❌</span>
-          <div className="side-rec-title">Failed to load</div>
+      <div className="side-rec-panel warn">
+        <div className="side-rec-head" style={{ background: "var(--amber-lt)" }}>
+          <span style={{ fontSize: 20 }}>📭</span>
+          <div>
+            <div className="side-rec-title">No Recommendation Yet</div>
+            <div className="side-rec-sub">{rec.error}</div>
+          </div>
         </div>
-        <p className="side-rec-reason">{rec.error}</p>
+        <p className="side-rec-reason" style={{ color: "var(--muted)", fontStyle: "italic" }}>
+          Add a recommendation for this employee via the CAP service to see results here.
+        </p>
       </div>
     )
   }
 
-  const cls  = rec.recommendation === "Recommended"     ? "good"
-             : rec.recommendation === "Not Recommended" ? "bad" : "warn"
+  const cls = rec.recommendation === "Recommended" ? "good"
+    : rec.recommendation === "Not Recommended" ? "bad" : "warn"
   const icon = cls === "good" ? "✅" : cls === "bad" ? "❌" : "⚠️"
 
   return (
     <div className={`side-rec-panel ${cls}`}>
       {/* Header */}
       <div className="side-rec-head">
-        <span style={{fontSize:20}}>{icon}</span>
-        <div style={{flex:1}}>
+        <span style={{ fontSize: 20 }}>{icon}</span>
+        <div style={{ flex: 1 }}>
           <div className="side-rec-title">{rec.recommendation}</div>
           <div className="side-rec-sub">{rec.employeeName}</div>
         </div>
         <div className="side-rec-score">
           <span className="side-score-num">{rec.overallScore}</span>
-          <span style={{fontSize:10,color:"var(--muted)"}}>/100</span>
+          <span style={{ fontSize: 10, color: "var(--muted)" }}>/100</span>
         </div>
       </div>
 
       {/* Reason */}
-      <p className="side-rec-reason">{rec.reason}</p>
+      <p className="side-rec-reason">{highlightNumbers(rec.reason)}</p>
 
       {/* Rules */}
       <div className="side-rec-rules">
@@ -131,8 +158,8 @@ function InlineRecommendation({ rec, loading }) {
 // and recommendation appears in right panel beside them
 function EmployeeList({ employees }) {
   const [selectedEmp, setSelectedEmp] = useState(null)
-  const [rec,         setRec]         = useState(null)
-  const [loading,     setLoading]     = useState(false)
+  const [rec, setRec] = useState(null)
+  const [loading, setLoading] = useState(false)
 
   async function handleRecommend(emp) {
     // Clicking same card again → close
@@ -148,10 +175,10 @@ function EmployeeList({ employees }) {
     setLoading(true)
 
     try {
-      const res  = await fetch("/api/recommend", {
-        method:  "POST",
+      const res = await fetch("/api/recommend", {
+        method: "POST",
         headers: { "Content-Type": "application/json" },
-        body:    JSON.stringify({ employeeId: emp.employeeId }),
+        body: JSON.stringify({ employeeId: emp.employeeId }),
       })
       const text = await res.text()
       if (!res.ok || !text) {
@@ -167,9 +194,9 @@ function EmployeeList({ employees }) {
   }
 
   const hasPanel = !!(selectedEmp && (loading || rec))
-  const recCls   = rec?.recommendation === "Recommended"     ? "good"
-                 : rec?.recommendation === "Not Recommended" ? "bad"
-                 : rec && !rec.error                         ? "warn" : ""
+  const recCls = rec?.recommendation === "Recommended" ? "good"
+    : rec?.recommendation === "Not Recommended" ? "bad"
+      : rec && !rec.error ? "warn" : ""
 
   return (
     // Two-column grid when panel is open, single column otherwise
@@ -199,7 +226,7 @@ function EmployeeList({ employees }) {
 
 // ---- Full Recommendation Panel (returned by agent tool) -
 function RecommendationPanel({ rec }) {
-  const cls  = rec.recommendation === "Recommended" ? "good"
+  const cls = rec.recommendation === "Recommended" ? "good"
     : rec.recommendation === "Not Recommended" ? "bad" : "warn"
   const icon = cls === "good" ? "✅" : cls === "bad" ? "❌" : "⚠️"
   return (
@@ -324,7 +351,7 @@ export default function AssistantPage() {
     transport: new DefaultChatTransport({ api: "/api/agent" }),
   })
 
-  const busy      = status === "streaming" || status === "submitted"
+  const busy = status === "streaming" || status === "submitted"
   const isWaiting = status === "submitted"
 
   useEffect(() => {
@@ -339,11 +366,11 @@ export default function AssistantPage() {
     sendMessage({ text: msg })
   }
 
-  const lastMessage  = messages[messages.length - 1]
-  const runningTool  = lastMessage?.role === "assistant"
+  const lastMessage = messages[messages.length - 1]
+  const runningTool = lastMessage?.role === "assistant"
     ? lastMessage.parts?.find(p =>
-        p.type?.startsWith("tool-") && p.state !== "output-available"
-      )
+      p.type?.startsWith("tool-") && p.state !== "output-available"
+    )
     : null
   const runningLabel = runningTool
     ? TOOL_LABELS[runningTool.type?.replace("tool-", "")] || "Working…"
@@ -352,7 +379,9 @@ export default function AssistantPage() {
   return (
     <div className="page">
       <header className="header">
-        <div className="header-icon">⇄</div>
+        <div className="header-icon">
+          <Sparkles size={22} color="#fff" />
+        </div>
         <div>
           <h1>Employee Transfer Assistant</h1>
           <p>AI-powered employee transfer management</p>
@@ -430,7 +459,9 @@ export default function AssistantPage() {
           onClick={() => send()}
           disabled={busy || !input.trim()}
           className="send-btn"
-        >{busy ? "…" : "↑"}</button>
+        >
+          {busy ? "…" : <SendHorizontal size={18} color="#fff" />}
+        </button>
       </div>
     </div>
   )
