@@ -19,11 +19,15 @@ function StatusBadge({ status }) {
   return <span className={`badge ${cls}`}>{label}</span>
 }
 
-function EmployeeCard({ emp }) {
+// ---- Single Employee Card (no own state — controlled by parent) --
+function EmployeeCard({ emp, isSelected, onRecommend }) {
   return (
-    <div className="emp-card">
-      <div className="emp-head">
+    <div className={`emp-card ${isSelected ? "emp-card-selected" : ""}`}>
+
+      {/* Single row — avatar | name | transfer | badge | button */}
+      <div className="emp-top">
         <div className="avatar">{emp.firstName[0]}{emp.lastName[0]}</div>
+
         <div className="emp-info">
           <div className="emp-name">
             {emp.firstName} {emp.lastName}
@@ -31,13 +35,24 @@ function EmployeeCard({ emp }) {
           </div>
           <div className="emp-role">{emp.jobTitle}</div>
         </div>
+
+        <div className="transfer-row">
+          <span className="dept from">{emp.department}</span>
+          <span className="arrow">→</span>
+          <span className="dept to">{emp.TransferTo}</span>
+        </div>
+
         <StatusBadge status={emp.approvalStatus} />
+
+        <button
+          className={`rec-btn ${isSelected ? "rec-btn-active" : ""}`}
+          onClick={() => onRecommend(emp)}
+        >
+          {isSelected ? "✕ Close" : "Recommend ✨"}
+        </button>
       </div>
-      <div className="transfer-row">
-        <span className="dept from">{emp.department}</span>
-        <span className="arrow">→</span>
-        <span className="dept to">{emp.TransferTo}</span>
-      </div>
+
+      {/* Meta row */}
       <div className="emp-meta">
         <span>✉ {emp.email}</span>
         <span>💰 ${Number(emp.salary).toLocaleString()}</span>
@@ -47,6 +62,142 @@ function EmployeeCard({ emp }) {
   )
 }
 
+// ---- Recommendation panel that sits beside all cards ----
+function InlineRecommendation({ rec, loading }) {
+  if (loading) {
+    return (
+      <div className="side-rec-panel loading">
+        <div className="side-rec-loading">
+          <div className="typing"><span/><span/><span/></div>
+          <span>Analysing transfer request…</span>
+        </div>
+      </div>
+    )
+  }
+
+  if (!rec) return null
+
+  if (rec.error) {
+    return (
+      <div className="side-rec-panel bad">
+        <div className="side-rec-head" style={{background:"var(--red-lt)"}}>
+          <span>❌</span>
+          <div className="side-rec-title">Failed to load</div>
+        </div>
+        <p className="side-rec-reason">{rec.error}</p>
+      </div>
+    )
+  }
+
+  const cls  = rec.recommendation === "Recommended"     ? "good"
+             : rec.recommendation === "Not Recommended" ? "bad" : "warn"
+  const icon = cls === "good" ? "✅" : cls === "bad" ? "❌" : "⚠️"
+
+  return (
+    <div className={`side-rec-panel ${cls}`}>
+      {/* Header */}
+      <div className="side-rec-head">
+        <span style={{fontSize:20}}>{icon}</span>
+        <div style={{flex:1}}>
+          <div className="side-rec-title">{rec.recommendation}</div>
+          <div className="side-rec-sub">{rec.employeeName}</div>
+        </div>
+        <div className="side-rec-score">
+          <span className="side-score-num">{rec.overallScore}</span>
+          <span style={{fontSize:10,color:"var(--muted)"}}>/100</span>
+        </div>
+      </div>
+
+      {/* Reason */}
+      <p className="side-rec-reason">{rec.reason}</p>
+
+      {/* Rules */}
+      <div className="side-rec-rules">
+        {Object.entries(rec.ruleResults).map(([rule, result]) => (
+          <div key={rule} className={`side-rule ${result === "Pass" ? "pass" : "fail"}`}>
+            <span>{result === "Pass" ? "✓" : "✗"}</span>
+            <span className="side-rule-name">{rule}</span>
+          </div>
+        ))}
+      </div>
+
+      <div className="side-rec-tenure">Tenure: {rec.tenure} months</div>
+    </div>
+  )
+}
+
+// ---- Employee List — owns the recommendation state ------
+// When any card is selected, ALL cards shrink to left column
+// and recommendation appears in right panel beside them
+function EmployeeList({ employees }) {
+  const [selectedEmp, setSelectedEmp] = useState(null)
+  const [rec,         setRec]         = useState(null)
+  const [loading,     setLoading]     = useState(false)
+
+  async function handleRecommend(emp) {
+    // Clicking same card again → close
+    if (selectedEmp?.employeeId === emp.employeeId) {
+      setSelectedEmp(null)
+      setRec(null)
+      return
+    }
+
+    // New card selected
+    setSelectedEmp(emp)
+    setRec(null)
+    setLoading(true)
+
+    try {
+      const res  = await fetch("/api/recommend", {
+        method:  "POST",
+        headers: { "Content-Type": "application/json" },
+        body:    JSON.stringify({ employeeId: emp.employeeId }),
+      })
+      const text = await res.text()
+      if (!res.ok || !text) {
+        setRec({ error: `Server error ${res.status}` })
+        return
+      }
+      setRec(JSON.parse(text))
+    } catch (e) {
+      setRec({ error: e.message })
+    } finally {
+      setLoading(false)
+    }
+  }
+
+  const hasPanel = !!(selectedEmp && (loading || rec))
+  const recCls   = rec?.recommendation === "Recommended"     ? "good"
+                 : rec?.recommendation === "Not Recommended" ? "bad"
+                 : rec && !rec.error                         ? "warn" : ""
+
+  return (
+    // Two-column grid when panel is open, single column otherwise
+    <div className={`emp-list-grid ${hasPanel ? "panel-open" : ""}`}>
+
+      {/* LEFT — all cards, shrink when panel is open */}
+      <div className="emp-list-cards">
+        {employees.map(emp => (
+          <EmployeeCard
+            key={emp.employeeId}
+            emp={emp}
+            isSelected={selectedEmp?.employeeId === emp.employeeId}
+            onRecommend={handleRecommend}
+          />
+        ))}
+      </div>
+
+      {/* RIGHT — recommendation panel, only visible when a card is selected */}
+      {hasPanel && (
+        <div className={`emp-list-panel ${recCls}`}>
+          <InlineRecommendation rec={rec} loading={loading} />
+        </div>
+      )}
+    </div>
+  )
+}
+
+// ---- Full Recommendation Panel (returned by agent tool) -
 function RecommendationPanel({ rec }) {
   const cls  = rec.recommendation === "Recommended" ? "good"
     : rec.recommendation === "Not Recommended" ? "bad" : "warn"
@@ -99,44 +250,42 @@ function StatsPanel({ stats }) {
   )
 }
 
-// ---- Fix 2: Empty state + proper rendering -----------------
 function ToolOutput({ toolName, data }) {
   if (data === null || data === undefined) return null
 
-  // FIX: Empty array — show friendly message instead of blank
   if (Array.isArray(data) && data.length === 0) {
     return (
       <div className="tool-result">
-        <div className="empty-result">
-          No employees found for this query.
-        </div>
+        <div className="empty-result">No employees found for this query.</div>
       </div>
     )
   }
 
-  // Array of employees
+  // Array of employees — use EmployeeList so all cards share one rec state
   if (Array.isArray(data) && data[0]?.employeeId) {
     return (
       <div className="tool-result">
         <div className="result-label">
           {data.length} employee{data.length !== 1 ? "s" : ""}
         </div>
-        {data.map(emp => <EmployeeCard key={emp.employeeId} emp={emp} />)}
+        <EmployeeList employees={data} />
       </div>
     )
   }
 
   // Single employee
   if (data?.employeeId && !data.recommendation) {
-    return <div className="tool-result"><EmployeeCard emp={data} /></div>
+    return (
+      <div className="tool-result">
+        <EmployeeList employees={[data]} />
+      </div>
+    )
   }
 
-  // Recommendation
   if (data?.recommendation) {
     return <div className="tool-result"><RecommendationPanel rec={data} /></div>
   }
 
-  // Stats
   if (data?.total !== undefined) {
     return <div className="tool-result"><StatsPanel stats={data} /></div>
   }
@@ -144,9 +293,6 @@ function ToolOutput({ toolName, data }) {
   return <pre className="raw">{JSON.stringify(data, null, 2)}</pre>
 }
 
-// ---- Fix 3: Loader shown during tool execution -------------
-// Shows animated dots whenever agent is working
-// (streaming OR tools running)
 function ThinkingLoader({ label }) {
   return (
     <div className="row assistant">
@@ -178,9 +324,8 @@ export default function AssistantPage() {
     transport: new DefaultChatTransport({ api: "/api/agent" }),
   })
 
-  // "streaming" = tokens coming in, "submitted" = waiting for first response
-  const busy       = status === "streaming" || status === "submitted"
-  const isWaiting  = status === "submitted"  // sent but nothing back yet
+  const busy      = status === "streaming" || status === "submitted"
+  const isWaiting = status === "submitted"
 
   useEffect(() => {
     if (scrollRef.current)
@@ -194,7 +339,6 @@ export default function AssistantPage() {
     sendMessage({ text: msg })
   }
 
-  // Check if the last assistant message has any tool currently running
   const lastMessage  = messages[messages.length - 1]
   const runningTool  = lastMessage?.role === "assistant"
     ? lastMessage.parts?.find(p =>
@@ -236,8 +380,6 @@ export default function AssistantPage() {
               </div>
 
               {message.parts?.map((part, i) => {
-
-                // FIX 1: Render markdown properly instead of raw **text**
                 if (part.type === "text") {
                   if (!part.text?.trim()) return null
                   return (
@@ -270,14 +412,10 @@ export default function AssistantPage() {
           </div>
         ))}
 
-        {/* FIX 3: Show loader when waiting for first response */}
         {isWaiting && <ThinkingLoader label="Thinking…" />}
-
-        {/* Show tool running label during streaming */}
         {status === "streaming" && runningLabel && (
           <ThinkingLoader label={runningLabel} />
         )}
-
       </div>
 
       <div className="input-bar">

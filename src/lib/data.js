@@ -1,6 +1,5 @@
 // src/lib/data.js
-import { generateObject } from "ai"
-import { createOpenAICompatible } from "@ai-sdk/openai-compatible"
+
 import { z } from "zod"
 
 const CAP_BASE_URL = process.env.CAP_BASE_URL
@@ -43,44 +42,9 @@ const SALARY_BANDS = {
 let cachedToken = null
 let tokenExpiry  = 0
 
-async function getAICoreToken() {
-  if (cachedToken && Date.now() < tokenExpiry) return cachedToken
-  const res = await fetch(`${process.env.AICORE_AUTH_URL}/oauth/token`, {
-    method: "POST",
-    headers: {
-      Authorization: "Basic " + Buffer.from(
-        `${process.env.AICORE_CLIENT_ID}:${process.env.AICORE_CLIENT_SECRET}`
-      ).toString("base64"),
-      "Content-Type": "application/x-www-form-urlencoded",
-    },
-    body: "grant_type=client_credentials",
-  })
-  const data = await res.json()
-  if (!res.ok) throw new Error(`AI Core auth failed: ${JSON.stringify(data)}`)
-  cachedToken = data.access_token
-  tokenExpiry  = Date.now() + (data.expires_in - 60) * 1000
-  return cachedToken
-}
 
-// ---- Zod schema for generateObject ------------------------
-const RecommendationSchema = z.object({
-  recommendation: z.enum(["Recommended", "Not Recommended", "Conditionally Recommended"]),
-  reason:         z.string(),
-  overallScore:   z.number().min(0).max(100),
-  ruleResults: z.object({
-    isActive:        z.enum(["Pass", "Fail"]),
-    tenure:          z.enum(["Pass", "Fail"]),
-    targetDept:      z.enum(["Pass", "Fail"]),
-    salaryValid:     z.enum(["Pass", "Fail"]),
-    recordComplete:  z.enum(["Pass", "Fail"]),
-    tenurePreferred: z.enum(["Pass", "Fail"]),
-    crossFunctional: z.enum(["Pass", "Fail"]),
-    salaryBand:      z.enum(["Pass", "Fail"]),
-    seniorityMatch:  z.enum(["Pass", "Fail"]),
-  }),
-  keyStrengths: z.array(z.string()),
-  keyRisks:     z.array(z.string()),
-})
+
+
 
 // ---- Data functions ----------------------------------------
 
@@ -157,10 +121,12 @@ export async function generateRecommendation(employeeId) {
     recordComplete: 5, tenurePreferred: 10, crossFunctional: 5,
     salaryBand: 15, seniorityMatch: 10,
   }
+
   const total        = Object.values(weights).reduce((a, b) => a + b, 0)
   const scored       = Object.entries(ruleResults)
     .reduce((s, [k, v]) => s + (v === 'Pass' ? weights[k] : 0), 0)
   const overallScore = Math.round((scored / total) * 100)
+
 
   const hardFails    = ['isActive','tenure','targetDept','salaryValid']
     .filter(k => ruleResults[k] === 'Fail')
@@ -174,6 +140,7 @@ export async function generateRecommendation(employeeId) {
         ruleResults.salaryBand === 'Pass' ? 'within' : 'outside'
       } the ${emp.TransferTo} band. Score: ${overallScore}/100.`
 
+      
   return {
     employeeId,
     employeeName: `${emp.firstName} ${emp.lastName}`,
