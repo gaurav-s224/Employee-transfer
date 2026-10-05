@@ -318,19 +318,27 @@ const CHART_COLORS = [
 
 function StatsPanel({ stats }) {
   const { send, busy } = useContext(ChatContext)
-  const [allEmployees, setAllEmployees] = useState([])
+  const [allEmployees, setAllEmployees]   = useState([])
+  const [selectedDept, setSelectedDept]   = useState(null)
+  const [fetchDone,    setFetchDone]      = useState(false)
 
-  // Fetch employees once to power the tooltips
   useEffect(() => {
-    fetch(`${process.env.NEXT_PUBLIC_CAP_BASE_URL}/employee/Employees`, {
-      headers: { Accept: "application/json" }
+  // Call our own Next.js API instead of CAP directly
+  // This avoids CORS issues in BAS
+  fetch("/api/employees-public")
+    .then(r => r.json())
+    .then(d => {
+      console.log("Fetched employees for charts:", d.value)
+      setAllEmployees(d.value || [])
+      setFetchDone(true)
     })
-      .then(r => r.json())
-      .then(d => setAllEmployees(d.value || []))
-      .catch(() => {})
-  }, [])
+    .catch(e => {
+      console.error("Chart fetch failed:", e)
+      setFetchDone(true)
+    })
+}, [])
 
-  // Build pie data with employee lists attached
+  // Build data only after fetch is done
   const pendingEmps  = allEmployees.filter(e => e.approvalStatus === "Pending")
   const approvedEmps = allEmployees.filter(e => e.approvalStatus === "Accept")
 
@@ -339,30 +347,33 @@ function StatsPanel({ stats }) {
     { name: "Approved", value: stats.approved, color: "#059669", employees: approvedEmps },
   ]
 
-  // Build bar data with employee lists attached
-  const deptData = Object.entries(stats.byDept).map(([dept, count], i) => ({
-    dept,
-    count,
-    fill: CHART_COLORS[i % CHART_COLORS.length],
-    employees: allEmployees.filter(
-    e => e.department?.toLowerCase() === dept.toLowerCase()  // ← case insensitive
-  ),
-  }))
+  const deptData = Object.entries(stats.byDept).map(([dept, count], i) => {
+    const emps = allEmployees.filter(
+      e => (e.department || "").toLowerCase() === dept.toLowerCase()
+    )
+    console.log(`Dept ${dept}: found ${emps.length} employees`, emps)
+    return {
+      dept,
+      count,
+      fill: CHART_COLORS[i % CHART_COLORS.length],
+      employees: emps,
+    }
+  })
 
-  // Click handlers — trigger chat message
+  const selectedDeptData = deptData.find(d => d.dept === selectedDept) || null
+
   function handlePieClick(data) {
     if (!data || busy) return
-    const status = data.name  // "Pending" or "Approved"
-    if (status === "Pending") {
-      send("Show me all employees who are pending approval")
-    } else {
-      send("Show me all employees who have been approved")
-    }
+    send(data.name === "Pending"
+      ? "Show me all employees who are pending approval"
+      : "Show me all employees who have been approved"
+    )
   }
 
-  function handleBarClick(data) {
-    if (!data || busy) return
-    send(`Show me all employees from the ${data.dept} department`)
+  function handleBarClick(payload) {
+    console.log("Bar clicked:", payload)
+    if (!payload?.dept) return
+    setSelectedDept(prev => prev === payload.dept ? null : payload.dept)
   }
 
   return (
@@ -384,33 +395,25 @@ function StatsPanel({ stats }) {
         </div>
       </div>
 
-      {/* Charts */}
       <div className="stats-charts-row">
 
-        {/* Pie chart */}
+        {/* ---- PIE CHART ---- */}
         <div className="stats-chart-card">
           <div className="stats-chart-title">Approval Status</div>
-          <div className="chart-hint">Hover for details · Click to explore</div>
+          <div className="chart-hint">Hover for details · Click to explore in chat</div>
           <ResponsiveContainer width="100%" height={180}>
             <PieChart>
               <Pie
                 data={pieData}
-                cx="50%"
-                cy="50%"
-                innerRadius={50}
-                outerRadius={75}
+                cx="50%" cy="50%"
+                innerRadius={50} outerRadius={75}
                 paddingAngle={4}
                 dataKey="value"
                 onClick={handlePieClick}
                 style={{ cursor: "pointer" }}
               >
                 {pieData.map((entry, i) => (
-                  <Cell
-                    key={i}
-                    fill={entry.color}
-                    stroke="none"
-                    style={{ outline: "none" }}
-                  />
+                  <Cell key={i} fill={entry.color} stroke="none" />
                 ))}
               </Pie>
               <Tooltip content={<PieTooltipContent />} />
@@ -431,40 +434,126 @@ function StatsPanel({ stats }) {
           </div>
         </div>
 
-        {/* Bar chart */}
+        {/* ---- BAR CHART ---- */}
         <div className="stats-chart-card">
           <div className="stats-chart-title">By Department</div>
-          <div className="chart-hint">Hover for details · Click to explore</div>
+          <div className="chart-hint">
+            {selectedDept
+              ? `Showing: ${selectedDept} — click bar again to close`
+              : "Click a bar to see employees"
+            }
+          </div>
           <ResponsiveContainer width="100%" height={180}>
             <BarChart
               data={deptData}
               margin={{ top: 10, right: 10, left: -20, bottom: 0 }}
-              barSize={32}
-              onClick={(data) => data?.activePayload && handleBarClick(data.activePayload[0].payload)}
+              barSize={40}
               style={{ cursor: "pointer" }}
             >
               <CartesianGrid strokeDasharray="3 3" stroke="#e2e8f0" vertical={false} />
               <XAxis
                 dataKey="dept"
                 tick={{ fontSize: 11, fill: "#64748b" }}
-                axisLine={false}
-                tickLine={false}
+                axisLine={false} tickLine={false}
               />
               <YAxis
                 allowDecimals={false}
                 tick={{ fontSize: 11, fill: "#64748b" }}
-                axisLine={false}
-                tickLine={false}
+                axisLine={false} tickLine={false}
               />
-              <Tooltip content={<BarTooltipContent />}
-              cursor={{ fill: "rgba(13,148,136,0.08)" }} />
-              <Bar dataKey="count" radius={[8,8,0,0]}>
+              <Tooltip
+                cursor={{ fill: "rgba(13,148,136,0.08)" }}
+                content={({ active, payload, label }) => {
+                  if (!active || !payload?.length) return null
+                  return (
+                    <div style={{
+                      background:"var(--slate-900)",color:"#fff",
+                      padding:"6px 12px",borderRadius:"8px",fontSize:"12px"
+                    }}>
+                      <strong>{label}</strong> — {payload[0].value} employee{payload[0].value !== 1 ? "s" : ""}
+                      <div style={{fontSize:10,color:"var(--teal-400)",marginTop:3}}>
+                        Click to see details
+                      </div>
+                    </div>
+                  )
+                }}
+              />
+              <Bar
+                dataKey="count"
+                radius={[8,8,0,0]}
+                onClick={(data) => {
+                  console.log("Bar onClick data:", data)
+                  handleBarClick(data)
+                }}
+              >
                 {deptData.map((entry, i) => (
-                  <Cell key={i} fill={entry.fill} />
+                  <Cell
+                    key={i}
+                    fill={entry.fill}
+                    opacity={selectedDept && entry.dept !== selectedDept ? 0.35 : 1}
+                  />
                 ))}
               </Bar>
             </BarChart>
           </ResponsiveContainer>
+
+          {/* ---- Employee panel appears here when bar is clicked ---- */}
+          {selectedDeptData && (
+            <div className="dept-detail-panel">
+              <div className="dept-detail-header">
+                <div className="dept-detail-title">
+                  <span
+                    className="dept-detail-dot"
+                    style={{ background: selectedDeptData.fill }}
+                  />
+                  {selectedDept} · {selectedDeptData.employees.length} employee{selectedDeptData.employees.length !== 1 ? "s" : ""}
+                </div>
+                <button
+                  className="dept-detail-close"
+                  onClick={() => setSelectedDept(null)}
+                >✕</button>
+              </div>
+
+              {selectedDeptData.employees.length === 0 ? (
+                <div style={{padding:"12px 14px",fontSize:12,color:"var(--muted)"}}>
+                  {fetchDone
+                    ? "No employee data loaded — check NEXT_PUBLIC_CAP_BASE_URL in .env.local"
+                    : "Loading employee details…"
+                  }
+                </div>
+              ) : (
+                <div className="dept-detail-employees">
+                  {selectedDeptData.employees.map(emp => (
+                    <div key={emp.employeeId} className="dept-detail-emp">
+                      <div className="dept-detail-avatar">
+                        {emp.firstName?.[0]}{emp.lastName?.[0]}
+                      </div>
+                      <div className="dept-detail-info">
+                        <div className="dept-detail-name">
+                          {emp.firstName} {emp.lastName}
+                        </div>
+                        <div className="dept-detail-email">{emp.email}</div>
+                      </div>
+                      <span className={`badge ${emp.approvalStatus === "Pending" ? "pending" : "approved"}`}>
+                        {emp.approvalStatus === "Pending" ? "Pending" : "Approved"}
+                      </span>
+                    </div>
+                  ))}
+                </div>
+              )}
+
+              <button
+                className="dept-detail-chat-btn"
+                onClick={() => {
+                  send(`Show me all employees from the ${selectedDept} department`)
+                  setSelectedDept(null)
+                }}
+                disabled={busy}
+              >
+                Show {selectedDept} employees in chat →
+              </button>
+            </div>
+          )}
         </div>
 
       </div>
@@ -586,7 +675,7 @@ export default function AssistantPage() {
   const busy = status === "streaming" || status === "submitted"
   const isWaiting = status === "submitted"
 
-  
+
 
   useEffect(() => {
     if (scrollRef.current)
@@ -612,101 +701,101 @@ export default function AssistantPage() {
 
   return (
     <ChatContext.Provider value={{ send, busy }}>
-    <div className="page">
-      <header className="header">
-        <div className="header-icon">
-          <Sparkles size={22} color="#fff" />
-        </div>
-        <div>
-          <h1>Employee Transfer Assistant</h1>
-          <p>AI-powered employee transfer management</p>
-        </div>
-      </header>
-
-      <div className="messages" ref={scrollRef}>
-        {messages.length === 0 && (
-          <div className="empty">
-            <div style={{ fontSize: 40 }}>💬</div>
-            <p>Ask me about employee transfer requests</p>
-            <div className="chips">
-              {SUGGESTIONS.map(s => (
-                <button key={s} className="chip" onClick={() => send(s)}>{s}</button>
-              ))}
-            </div>
+      <div className="page">
+        <header className="header">
+          <div className="header-icon">
+            <Sparkles size={22} color="#fff" />
           </div>
-        )}
+          <div>
+            <h1>Employee Transfer Assistant</h1>
+            <p>AI-powered employee transfer management</p>
+          </div>
+        </header>
 
-        {messages.map(message => (
-          <div key={message.id} className={`row ${message.role}`}>
-            <div className={`bubble ${message.role}`}>
-              <div className="bubble-label">
-                {message.role === "user" ? "You" : "Assistant"}
+        <div className="messages" ref={scrollRef}>
+          {messages.length === 0 && (
+            <div className="empty">
+              <div style={{ fontSize: 40 }}>💬</div>
+              <p>Ask me about employee transfer requests</p>
+              <div className="chips">
+                {SUGGESTIONS.map(s => (
+                  <button key={s} className="chip" onClick={() => send(s)}>{s}</button>
+                ))}
               </div>
+            </div>
+          )}
 
-              {message.parts?.map((part, i) => {
-                if (part.type === "text") {
-                  if (!part.text?.trim()) return null
+          {messages.map(message => (
+            <div key={message.id} className={`row ${message.role}`}>
+              <div className={`bubble ${message.role}`}>
+                <div className="bubble-label">
+                  {message.role === "user" ? "You" : "Assistant"}
+                </div>
 
-                  const hasToolsBefore = message.parts
-                    .slice(0, i)
-                    .some(p => p.type?.startsWith("tool-") && p.state === "output-available")
+                {message.parts?.map((part, i) => {
+                  if (part.type === "text") {
+                    if (!part.text?.trim()) return null
 
-                  return (
-                    <div key={i}>
-                      {hasToolsBefore && <div className="text-divider" />}
-                      <div className="bubble-text markdown-body">
-                        <ReactMarkdown>{part.text}</ReactMarkdown>
-                      </div>
-                    </div>
-                  )
-                }
+                    const hasToolsBefore = message.parts
+                      .slice(0, i)
+                      .some(p => p.type?.startsWith("tool-") && p.state === "output-available")
 
-                if (part.type?.startsWith("tool-")) {
-                  if (part.state !== "output-available") {
-                    const toolName = part.type.replace("tool-", "")
                     return (
-                      <div key={i} className="tool-trace">
-                        <span className="dot" />
-                        {TOOL_LABELS[toolName] || toolName}…
+                      <div key={i}>
+                        {hasToolsBefore && <div className="text-divider" />}
+                        <div className="bubble-text markdown-body">
+                          <ReactMarkdown>{part.text}</ReactMarkdown>
+                        </div>
                       </div>
                     )
                   }
-                  const toolName = part.type.replace("tool-", "")
-                  return (
-                    <ToolOutput key={i} toolName={toolName} data={part.output} />
-                  )
-                }
 
-                if (part.type === "step-start") return null
-                return null
-              })}
+                  if (part.type?.startsWith("tool-")) {
+                    if (part.state !== "output-available") {
+                      const toolName = part.type.replace("tool-", "")
+                      return (
+                        <div key={i} className="tool-trace">
+                          <span className="dot" />
+                          {TOOL_LABELS[toolName] || toolName}…
+                        </div>
+                      )
+                    }
+                    const toolName = part.type.replace("tool-", "")
+                    return (
+                      <ToolOutput key={i} toolName={toolName} data={part.output} />
+                    )
+                  }
+
+                  if (part.type === "step-start") return null
+                  return null
+                })}
+              </div>
             </div>
-          </div>
-        ))}
+          ))}
 
-        {isWaiting && <ThinkingLoader label="Thinking…" />}
-        {status === "streaming" && runningLabel && (
-          <ThinkingLoader label={runningLabel} />
-        )}
-      </div>
+          {isWaiting && <ThinkingLoader label="Thinking…" />}
+          {status === "streaming" && runningLabel && (
+            <ThinkingLoader label={runningLabel} />
+          )}
+        </div>
 
-      <div className="input-bar">
-        <input
-          value={input}
-          onChange={e => setInput(e.target.value)}
-          onKeyDown={e => e.key === "Enter" && send()}
-          placeholder="Ask about transfers, approvals, recommendations…"
-          disabled={busy}
-        />
-        <button
-          onClick={() => send()}
-          disabled={busy || !input.trim()}
-          className="send-btn"
-        >
-          {busy ? "…" : <SendHorizontal size={18} color="#fff" />}
-        </button>
+        <div className="input-bar">
+          <input
+            value={input}
+            onChange={e => setInput(e.target.value)}
+            onKeyDown={e => e.key === "Enter" && send()}
+            placeholder="Ask about transfers, approvals, recommendations…"
+            disabled={busy}
+          />
+          <button
+            onClick={() => send()}
+            disabled={busy || !input.trim()}
+            className="send-btn"
+          >
+            {busy ? "…" : <SendHorizontal size={18} color="#fff" />}
+          </button>
+        </div>
       </div>
-    </div>
     </ChatContext.Provider>
   )
 }
