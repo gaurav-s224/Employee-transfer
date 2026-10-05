@@ -3,8 +3,15 @@ import { useState, useRef, useEffect } from "react"
 import { useChat } from "@ai-sdk/react"
 import { DefaultChatTransport } from "ai"
 import ReactMarkdown from "react-markdown"
+import { PieChart, Pie, Cell, Tooltip, ResponsiveContainer, BarChart, Bar, XAxis, YAxis, CartesianGrid } from "recharts"
+
+
 
 import { Sparkles, SendHorizontal } from "lucide-react"
+
+
+import { createContext, useContext } from "react"
+const ChatContext = createContext(null)
 
 const TOOL_LABELS = {
   getAllEmployees: "Reading all employees",
@@ -254,67 +261,292 @@ function RecommendationPanel({ rec }) {
   )
 }
 
-function StatsPanel({ stats }) {
+
+
+// Custom tooltip for pie chart — shows employee names + emails
+function PieTooltipContent({ active, payload }) {
+  if (!active || !payload?.length) return null
+  const entry = payload[0]
   return (
-    <div className="stats-panel">
-      <div className="kpis">
-        <div className="kpi"><span className="kv">{stats.total}</span>Total</div>
-        <div className="kpi"><span className="kv">{stats.pending}</span>Pending</div>
-        <div className="kpi green"><span className="kv">{stats.approved}</span>Approved</div>
+    <div className="chart-tooltip">
+      <div className="chart-tooltip-title" style={{ color: entry.payload.color }}>
+        {entry.name} — {entry.value} employees
       </div>
-      <div className="dept-breakdown">
-        {Object.entries(stats.byDept).map(([d, n]) => (
-          <div key={d} className="dept-row">
-            <span>{d}</span>
-            <div className="bar-wrap">
-              <div className="bar" style={{ width: `${(n / stats.total) * 100}%` }} />
-            </div>
-            <span>{n}</span>
+      {entry.payload.employees?.map(emp => (
+        <div key={emp.employeeId} className="chart-tooltip-row">
+          <span className="chart-tooltip-name">
+            {emp.firstName} {emp.lastName}
+          </span>
+          <span className="chart-tooltip-email">{emp.email}</span>
+        </div>
+      ))}
+      <div className="chart-tooltip-hint">Click to view in chat</div>
+    </div>
+  )
+}
+
+// Custom tooltip for bar chart — shows employee names
+function BarTooltipContent({ active, payload, label }) {
+  if (!active || !payload?.length) return null
+  const entry = payload[0]
+  return (
+    <div className="chart-tooltip">
+      <div className="chart-tooltip-title" style={{ color: "#0d9488" }}>
+        {label} — {entry.value} employee{entry.value !== 1 ? "s" : ""}
+      </div>
+      {entry.payload.employees?.map(emp => (
+        <div key={emp.employeeId} className="chart-tooltip-row">
+          <span className="chart-tooltip-name">
+            {emp.firstName} {emp.lastName}
+          </span>
+          <span className="chart-tooltip-email">{emp.jobTitle}</span>
+        </div>
+      ))}
+      <div className="chart-tooltip-hint">Click to view in chat</div>
+    </div>
+  )
+}
+
+const CHART_COLORS = [
+  "#0d9488",   // teal — IT
+  "#8b5cf6",   // violet — Finance  
+  "#f59e0b",   // amber — Marketing
+  "#3b82f6",   // blue — HR
+  "#ec4899",   // pink — Sales
+  "#10b981",   // emerald — Operations
+]
+
+function StatsPanel({ stats }) {
+  const { send, busy } = useContext(ChatContext)
+  const [allEmployees, setAllEmployees] = useState([])
+
+  // Fetch employees once to power the tooltips
+  useEffect(() => {
+    fetch(`${process.env.NEXT_PUBLIC_CAP_BASE_URL}/employee/Employees`, {
+      headers: { Accept: "application/json" }
+    })
+      .then(r => r.json())
+      .then(d => setAllEmployees(d.value || []))
+      .catch(() => {})
+  }, [])
+
+  // Build pie data with employee lists attached
+  const pendingEmps  = allEmployees.filter(e => e.approvalStatus === "Pending")
+  const approvedEmps = allEmployees.filter(e => e.approvalStatus === "Accept")
+
+  const pieData = [
+    { name: "Pending",  value: stats.pending,  color: "#d97706", employees: pendingEmps },
+    { name: "Approved", value: stats.approved, color: "#059669", employees: approvedEmps },
+  ]
+
+  // Build bar data with employee lists attached
+  const deptData = Object.entries(stats.byDept).map(([dept, count], i) => ({
+    dept,
+    count,
+    fill: CHART_COLORS[i % CHART_COLORS.length],
+    employees: allEmployees.filter(
+    e => e.department?.toLowerCase() === dept.toLowerCase()  // ← case insensitive
+  ),
+  }))
+
+  // Click handlers — trigger chat message
+  function handlePieClick(data) {
+    if (!data || busy) return
+    const status = data.name  // "Pending" or "Approved"
+    if (status === "Pending") {
+      send("Show me all employees who are pending approval")
+    } else {
+      send("Show me all employees who have been approved")
+    }
+  }
+
+  function handleBarClick(data) {
+    if (!data || busy) return
+    send(`Show me all employees from the ${data.dept} department`)
+  }
+
+  return (
+    <div className="stats-panel-new">
+
+      {/* KPI row */}
+      <div className="stats-kpis-row">
+        <div className="stats-kpi">
+          <span className="stats-kpi-num total">{stats.total}</span>
+          <span className="stats-kpi-lbl">Total Requests</span>
+        </div>
+        <div className="stats-kpi">
+          <span className="stats-kpi-num pending">{stats.pending}</span>
+          <span className="stats-kpi-lbl">Pending</span>
+        </div>
+        <div className="stats-kpi">
+          <span className="stats-kpi-num approved-num">{stats.approved}</span>
+          <span className="stats-kpi-lbl">Approved</span>
+        </div>
+      </div>
+
+      {/* Charts */}
+      <div className="stats-charts-row">
+
+        {/* Pie chart */}
+        <div className="stats-chart-card">
+          <div className="stats-chart-title">Approval Status</div>
+          <div className="chart-hint">Hover for details · Click to explore</div>
+          <ResponsiveContainer width="100%" height={180}>
+            <PieChart>
+              <Pie
+                data={pieData}
+                cx="50%"
+                cy="50%"
+                innerRadius={50}
+                outerRadius={75}
+                paddingAngle={4}
+                dataKey="value"
+                onClick={handlePieClick}
+                style={{ cursor: "pointer" }}
+              >
+                {pieData.map((entry, i) => (
+                  <Cell
+                    key={i}
+                    fill={entry.color}
+                    stroke="none"
+                    style={{ outline: "none" }}
+                  />
+                ))}
+              </Pie>
+              <Tooltip content={<PieTooltipContent />} />
+            </PieChart>
+          </ResponsiveContainer>
+          <div className="pie-legend">
+            {pieData.map((entry, i) => (
+              <div
+                key={i}
+                className="pie-legend-item clickable"
+                onClick={() => handlePieClick(entry)}
+              >
+                <span className="pie-dot" style={{ background: entry.color }} />
+                <span>{entry.name}</span>
+                <span className="pie-val">{entry.value}</span>
+              </div>
+            ))}
           </div>
-        ))}
+        </div>
+
+        {/* Bar chart */}
+        <div className="stats-chart-card">
+          <div className="stats-chart-title">By Department</div>
+          <div className="chart-hint">Hover for details · Click to explore</div>
+          <ResponsiveContainer width="100%" height={180}>
+            <BarChart
+              data={deptData}
+              margin={{ top: 10, right: 10, left: -20, bottom: 0 }}
+              barSize={32}
+              onClick={(data) => data?.activePayload && handleBarClick(data.activePayload[0].payload)}
+              style={{ cursor: "pointer" }}
+            >
+              <CartesianGrid strokeDasharray="3 3" stroke="#e2e8f0" vertical={false} />
+              <XAxis
+                dataKey="dept"
+                tick={{ fontSize: 11, fill: "#64748b" }}
+                axisLine={false}
+                tickLine={false}
+              />
+              <YAxis
+                allowDecimals={false}
+                tick={{ fontSize: 11, fill: "#64748b" }}
+                axisLine={false}
+                tickLine={false}
+              />
+              <Tooltip content={<BarTooltipContent />}
+              cursor={{ fill: "rgba(13,148,136,0.08)" }} />
+              <Bar dataKey="count" radius={[8,8,0,0]}>
+                {deptData.map((entry, i) => (
+                  <Cell key={i} fill={entry.fill} />
+                ))}
+              </Bar>
+            </BarChart>
+          </ResponsiveContainer>
+        </div>
+
       </div>
     </div>
   )
 }
 
+const TOOL_SECTION_LABELS = {
+  getAllEmployees: { icon: "👥", label: "All Employees" },
+  getEmployeesByStatus: { icon: "🔍", label: "Filtered Employees" },
+  getEmployeesByDept: { icon: "🏢", label: "Department Filter" },
+  getEmployeeDetails: { icon: "👤", label: "Employee Details" },
+  getTransferRecommendation: { icon: "⚡", label: "Transfer Recommendation" },
+  getSummaryStats: { icon: "📊", label: "Summary Statistics" },
+}
+
 function ToolOutput({ toolName, data }) {
   if (data === null || data === undefined) return null
 
+  const section = TOOL_SECTION_LABELS[toolName] || { icon: "📋", label: toolName }
+
   if (Array.isArray(data) && data.length === 0) {
     return (
-      <div className="tool-result">
+      <div className="tool-section">
+        <div className="tool-section-header">
+          <span className="tool-section-icon">{section.icon}</span>
+          <span className="tool-section-label">{section.label}</span>
+        </div>
         <div className="empty-result">No employees found for this query.</div>
       </div>
     )
   }
 
-  // Array of employees — use EmployeeList so all cards share one rec state
   if (Array.isArray(data) && data[0]?.employeeId) {
     return (
-      <div className="tool-result">
-        <div className="result-label">
-          {data.length} employee{data.length !== 1 ? "s" : ""}
+      <div className="tool-section">
+        <div className="tool-section-header">
+          <span className="tool-section-icon">{section.icon}</span>
+          <span className="tool-section-label">{section.label}</span>
+          <span className="tool-section-count">
+            {data.length} employee{data.length !== 1 ? "s" : ""}
+          </span>
         </div>
         <EmployeeList employees={data} />
       </div>
     )
   }
 
-  // Single employee
   if (data?.employeeId && !data.recommendation) {
     return (
-      <div className="tool-result">
+      <div className="tool-section">
+        <div className="tool-section-header">
+          <span className="tool-section-icon">{section.icon}</span>
+          <span className="tool-section-label">{section.label}</span>
+        </div>
         <EmployeeList employees={[data]} />
       </div>
     )
   }
 
   if (data?.recommendation) {
-    return <div className="tool-result"><RecommendationPanel rec={data} /></div>
+    return (
+      <div className="tool-section">
+        <div className="tool-section-header">
+          <span className="tool-section-icon">{section.icon}</span>
+          <span className="tool-section-label">{section.label}</span>
+        </div>
+        <RecommendationPanel rec={data} />
+      </div>
+    )
   }
 
   if (data?.total !== undefined) {
-    return <div className="tool-result"><StatsPanel stats={data} /></div>
+    return (
+      <div className="tool-section">
+        <div className="tool-section-header">
+          <span className="tool-section-icon">{section.icon}</span>
+          <span className="tool-section-label">{section.label}</span>
+        </div>
+        <StatsPanel stats={data} />
+      </div>
+    )
   }
 
   return <pre className="raw">{JSON.stringify(data, null, 2)}</pre>
@@ -354,6 +586,8 @@ export default function AssistantPage() {
   const busy = status === "streaming" || status === "submitted"
   const isWaiting = status === "submitted"
 
+  
+
   useEffect(() => {
     if (scrollRef.current)
       scrollRef.current.scrollTop = scrollRef.current.scrollHeight
@@ -377,6 +611,7 @@ export default function AssistantPage() {
     : null
 
   return (
+    <ChatContext.Provider value={{ send, busy }}>
     <div className="page">
       <header className="header">
         <div className="header-icon">
@@ -411,9 +646,17 @@ export default function AssistantPage() {
               {message.parts?.map((part, i) => {
                 if (part.type === "text") {
                   if (!part.text?.trim()) return null
+
+                  const hasToolsBefore = message.parts
+                    .slice(0, i)
+                    .some(p => p.type?.startsWith("tool-") && p.state === "output-available")
+
                   return (
-                    <div key={i} className="bubble-text markdown-body">
-                      <ReactMarkdown>{part.text}</ReactMarkdown>
+                    <div key={i}>
+                      {hasToolsBefore && <div className="text-divider" />}
+                      <div className="bubble-text markdown-body">
+                        <ReactMarkdown>{part.text}</ReactMarkdown>
+                      </div>
                     </div>
                   )
                 }
@@ -464,5 +707,6 @@ export default function AssistantPage() {
         </button>
       </div>
     </div>
+    </ChatContext.Provider>
   )
 }

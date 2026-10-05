@@ -527,3 +527,225 @@ html,body{
   border-radius:4px;font-size:12px;font-family:monospace;
   color:var(--teal-700);border:1px solid var(--teal-100)
 }
+
+/* ======================================================
+   TOOL SECTION — wraps each tool result with a header
+   ====================================================== */
+.tool-section {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+}
+
+.tool-section-header {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 8px 12px;
+  background: linear-gradient(135deg, var(--slate-900), var(--teal-800));
+  border-radius: 8px;
+  border-left: 3px solid var(--teal-400);
+}
+
+.tool-section-icon {
+  font-size: 15px;
+}
+
+.tool-section-label {
+  font-size: 12px;
+  font-weight: 700;
+  color: #fff;
+  text-transform: uppercase;
+  letter-spacing: 0.6px;
+  flex: 1;
+}
+
+.tool-section-count {
+  font-size: 11px;
+  font-weight: 600;
+  color: var(--teal-100);
+  background: rgba(255,255,255,.12);
+  padding: 2px 8px;
+  border-radius: 10px;
+}
+
+/* Separator between multiple tool sections in same message */
+.tool-result {
+  padding: 10px 14px 14px;
+  display: flex;
+  flex-direction: column;
+  gap: 14px;        /* increased from 10px for more breathing room */
+}
+.text-divider {
+  height: 1px;
+  background: linear-gradient(90deg, transparent, var(--border), transparent);
+  margin: 4px 14px;
+}
+
+/* ======================================================
+   STATS PANEL — new with charts
+   ====================================================== */
+.stats-panel-new {
+  background: var(--surface);
+  border: 1px solid var(--border);
+  border-radius: 12px;
+  overflow: hidden;
+  box-shadow: 0 2px 8px rgba(15,23,42,.06);
+}
+
+/* KPI row */
+.stats-kpis-row {
+  display: grid;
+  grid-template-columns: repeat(3, 1fr);
+  border-bottom: 1px solid var(--border);
+}
+
+.stats-kpi {
+  padding: 18px 20px;
+  text-align: center;
+  border-right: 1px solid var(--border);
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+}
+
+.stats-kpi:last-child { border-right: none; }
+
+.stats-kpi-num {
+  font-size: 36px;
+  font-weight: 800;
+  line-height: 1;
+  display: block;
+}
+
+.stats-kpi-num.total   { color: var(--teal-600); }
+.stats-kpi-num.pending { color: var(--amber); }
+.stats-kpi-num.approved-num { color: var(--green); }
+
+.stats-kpi-lbl {
+  font-size: 12px;
+  color: var(--muted);
+  font-weight: 500;
+}
+
+/* Charts row */
+.stats-charts-row {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 0;
+}
+
+.stats-chart-card {
+  padding: 16px 20px;
+  border-right: 1px solid var(--border);
+}
+
+.stats-chart-card:last-child { border-right: none; }
+
+.stats-chart-title {
+  font-size: 12px;
+  font-weight: 700;
+  color: var(--slate-700);
+  text-transform: uppercase;
+  letter-spacing: 0.5px;
+  margin-bottom: 4px;
+}
+
+/* Pie legend */
+.pie-legend {
+  display: flex;
+  justify-content: center;
+  gap: 16px;
+  margin-top: 8px;
+}
+
+.pie-legend-item {
+  display: flex;
+  align-items: center;
+  gap: 5px;
+  font-size: 12px;
+  color: var(--slate-700);
+}
+
+.pie-dot {
+  width: 8px;
+  height: 8px;
+  border-radius: 50%;
+  flex-shrink: 0;
+}
+
+.pie-val {
+  font-weight: 700;
+  color: var(--slate-900);
+}
+
+/* ---- Chart tooltip ------------------------------------ */
+.chart-tooltip {
+  background: var(--slate-900);
+  border-radius: 10px;
+  padding: 10px 14px;
+  min-width: 200px;
+  box-shadow: 0 4px 16px rgba(0,0,0,.2);
+  border: 1px solid rgba(255,255,255,.08);
+}
+
+.chart-tooltip-title {
+  font-size: 12px;
+  font-weight: 700;
+  margin-bottom: 8px;
+  padding-bottom: 6px;
+  border-bottom: 1px solid rgba(255,255,255,.1);
+}
+
+.chart-tooltip-row {
+  display: flex;
+  flex-direction: column;
+  gap: 1px;
+  margin-bottom: 6px;
+}
+
+.chart-tooltip-name {
+  font-size: 12px;
+  font-weight: 600;
+  color: #fff;
+}
+
+.chart-tooltip-email {
+  font-size: 10px;
+  color: rgba(255,255,255,.5);
+}
+
+.chart-tooltip-hint {
+  font-size: 10px;
+  color: var(--teal-400);
+  margin-top: 6px;
+  padding-top: 6px;
+  border-top: 1px solid rgba(255,255,255,.08);
+  text-align: center;
+}
+
+/* ---- Clickable legend --------------------------------- */
+.pie-legend-item.clickable {
+  cursor: pointer;
+  padding: 3px 8px;
+  border-radius: 6px;
+  transition: background .15s;
+}
+
+.pie-legend-item.clickable:hover {
+  background: var(--slate-100);
+}
+
+/* ---- Chart hint text ---------------------------------- */
+.chart-hint {
+  font-size: 10px;
+  color: var(--muted);
+  margin-bottom: 4px;
+  font-style: italic;
+}
+
+/* Bar hover effect */
+.recharts-bar-rectangle:hover {
+  filter: brightness(1.15);
+  transition: filter .15s ease;
+}
