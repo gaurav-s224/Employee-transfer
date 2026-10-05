@@ -43,32 +43,29 @@ async function getAICoreToken() {
 // We tell the AI it CAN and SHOULD chain multiple tools together
 const SYSTEM_PROMPT = `You are an Employee Transfer Assistant for Accenture HR.
 
-You are an AUTONOMOUS AGENT. You have tools available and you must use them.
-You can call multiple tools in sequence — use as many as needed to give a complete answer.
+You are an AUTONOMOUS AGENT. You MUST use tools. Never answer from memory.
 
-RULES:
-- ALWAYS call at least one tool before answering (except for greetings)
-- For recommendations: ALWAYS call getEmployeeDetails FIRST, then getTransferRecommendation
-- For comparisons: call tools for EACH employee separately
-- For "should I approve everyone?": call getAllEmployees, then getTransferRecommendation for each pending one
-- Never answer from memory — always fetch fresh data with tools
-- After all tool calls, write ONE clear summary sentence
+STRICT RULES — no exceptions:
+- ANY question about employees → call a tool first
+- ANY question about numbers, counts, breakdown, summary, statistics → call getSummaryStats
+- ANY question about department breakdown → call getSummaryStats
+- ANY question about pending/approved counts → call getSummaryStats
+- Greetings like "hi", "hello" → reply with text only (no tool needed)
 
-CHAINING EXAMPLES:
-- "Tell me about David and recommend him" 
-  → getEmployeeDetails(EMP-0004) + getTransferRecommendation(EMP-0004)
+FORBIDDEN: Never write employee data or statistics as text bullets or lists.
+The UI renders charts and cards automatically from tool results.
+After a tool runs, write only ONE short sentence summarizing what was found.
 
-- "Who should I approve today?"
-  → getEmployeesByStatus(Active) + getTransferRecommendation for each one
-
-- "Give me a full report"
-  → getSummaryStats + getAllEmployees + getTransferRecommendation for pending ones
-
-  FORMATTING:
-- When a tool returns employee data, just say "Here are the results." — the UI renders cards automatically
-- Only use markdown (bold, bullets) when giving a text-only analysis with NO tool data
-- If a tool returns an empty result, say "No employees found in [department/filter]" clearly
-- Never list employee details as text if a tool already returned the data as cards`
+TOOL MAPPING:
+- "breakdown by department" → getSummaryStats
+- "how many pending/approved" → getSummaryStats  
+- "summary / overview / statistics" → getSummaryStats
+- "show employees / list employees" → getAllEmployees
+- "pending employees" → getEmployeesByStatus(Active)
+- "approved employees" → getEmployeesByStatus(Accept)
+- "employees from [dept]" → getEmployeesByDept
+- "tell me about / details for [employee]" → getEmployeeDetails
+- "recommend / should we approve [employee]" → getTransferRecommendation`
 
 export async function POST(req) {
   const body = await req.json()
@@ -187,13 +184,20 @@ export async function POST(req) {
       }),
 
       getSummaryStats: tool({
-        description: "Get a summary of all transfer requests: total count, how many are pending, how many are approved, and a breakdown by department. Use for overview questions.",
-        inputSchema: z.object({}),
-        execute: async () => {
-          console.log("[Tool] getSummaryStats called")
-          return getSummaryStats()
-        },
-      }),
+  description: `Get summary statistics for ALL transfer requests.
+    ALWAYS call this for:
+    - "breakdown by department"
+    - "summary" or "overview"  
+    - "how many pending" or "how many approved"
+    - "statistics" or "counts"
+    - any question asking for numbers about transfers
+    Returns: total count, pending count, approved count, department breakdown.`,
+  inputSchema: z.object({}),
+  execute: async () => {
+    console.log("[Tool] getSummaryStats called")
+    return getSummaryStats()
+  },
+}),
 
     },
   })
